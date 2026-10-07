@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""Prayer times for El Iman Moschee Hamburg (mawaqit.net).
+
+  prayer-times daemon   fetch/cache times, remind 20 min before, play adhan
+  prayer-times fetch    refresh the cached mawaqit data now
+  prayer-times stop     stop the adhan that is currently playing
+  prayer-times test     play the adhan now (same device logic as the daemon)
+  prayer-times next     print the next prayer
+"""
+import datetime as dt
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+import urllib.request
+
+MOSQUE_URL = "https://mawaqit.net/en/m-el-iman-moschee-hamburg"
+PREFERRED_SINK = "Creative_Stage_Air_V2"
+REMIND_MINUTES = 20
+
+HOME = os.path.expanduser("~")
+STATE_DIR = os.path.join(HOME, ".local/state/prayer-times")
+CACHE = os.path.join(STATE_DIR, "mawaqit.json")
+PIDFILE = os.path.join(STATE_DIR, "adhan.pid")
+SOUNDS = os.path.join(HOME, ".local/share/prayer-times/sounds")
+
+# calendar row: [fajr, shuruq, dhuhr, asr, maghrib, isha]
+PRAYERS = [("fajr", "الفجر", 0), ("dhuhr", "الظهر", 2), ("asr", "العصر", 3),
+           ("maghrib", "المغرب", 4), ("isha", "العشاء", 5)]
+
+
+def log(*a):
+    print(*a, flush=True)
+
+
+def fetch():
+    req = urllib.request.Request(MOSQUE_URL, headers={"User-Agent": "Mozilla/5.0"})
+    html = urllib.request.urlopen(req, timeout=20).read().decode("utf-8")
+    m = re.search(r"confData = (\{.*?\});\s*\n", html, re.S)
+    conf = json.loads(m.group(1))
+    data = {k: conf.get(k) for k in ("name", "timezone", "calendar", "iqamaCalendar",
+                                       "jumua", "jumua2", "jumua3", "hijriAdjustment")}
+    data["fetched"] = dt.datetime.now().isoformat(timespec="seconds")
+    os.makedirs(STATE_DIR, exist_ok=True)
+    tmp = CACHE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(tmp, CACHE)
+    log("fetched", data["name"])
+    return data
+
+
+def load():
+    try:
+        with open(CACHE) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def times_for(data, day):
+    row = data["calendar"][day.month - 1][str(day.day)]
+    out = []
+    for key, name, idx in PRAYERS:
+        h, m = map(int, row[idx].split(":"))
+        out.append((key, name, dt.datetime.combine(day, dt.time(h, m))))
+    return out
+
+
+def find_sink():
+    try:
+        sinks = subprocess.run(["pactl", "list", "sinks", "short"], capture_output=True,
+                               text=True, timeout=5).stdout
+    except Exception:
+        return None
+    for line in sinks.splitlines():
+        parts = line.split("\t")
+        if len(parts) > 1 and PREFERRED_SINK in parts[1]:
+            return parts[1]
+    return None
+
+
+def play(path, wait=False):
+    cmd = ["mpv", "--no-video", "--really-quiet", "--audio-display=no"]
+    sink = find_sink()
+    if sink:
+        cmd.append("--audio-device=pulse/" + sink)
+    cmd.append(path)
+    log("play", path, "on", sink or "default")
+    p = subprocess.Popen(cmd)
+    if not wait:
+        return p
+    p.wait()
+    # Speaker vanished mid-start or mpv failed on it: fall back to the default device
+    if p.returncode not in (0, 4) and sink:
+        log("preferred sink failed, using default")
+        p = subprocess.Popen(cmd[:4] + [path])
+        p.wait()
+    return p
+
+
+def notify(title, body, urgency="normal"):
+    subprocess.run(["notify-send", "-a", "مواقيت الصلاة", "-u", urgency, "-i",
+                    "preferences-system-time", title, body])
+
+
+def adhan(key, name):
+    notify(f"حان الآن موعد أذان {name}", "حي على الصلاة", "critical")
+    sound = os.path.join(SOUNDS, "adhan-afassy-fajr.mp3" if key == "fajr" else "adhan-afassy.mp3")
+    with open(PIDFILE, "w") as f:
+        f.write(str(os.getpid()))
+    try:
+        play(sound, wait=True)
+    finally:
+        try:
+            os.remove(PIDFILE)
+        except FileNotFoundError:
+            pass
+
+
+def reminder(name, at):
+    notify(f"أذان {name} بعد {REMIND_MINUTES} دقيقة", f"موعد الأذان الساعة {at:%H:%M}")
+    play(os.path.join(SOUNDS, "bip.mp3"))
+
+
+def daemon():
+    data = None
+    try:
+        data = fetch()
+    except Exception as e:
+        log("fetch failed:", e)
+    data = data or load()
+    last_fetch_day = dt.date.today()
+    fired = set()
+    window = dt.timedelta(minutes=2)  # don't fire stale events after suspend
+
+    while True:
+        now = dt.datetime.now()
+        if now.date() != last_fetch_day and now.hour >= 1:
+            try:
+                data = fetch()
+                last_fetch_day = now.date()
+            except Exception as e:
+                log("fetch failed:", e)
+                data = data or load()
+        if not data:
+            time.sleep(60)
+            data = load()
+            continue
+
+        for key, name, at in times_for(data, now.date()):
+            remind_at = at - dt.timedelta(minutes=REMIND_MINUTES)
+            rid = (at.date(), key, "remind")
+            aid = (at.date(), key, "adhan")
+            if rid not in fired and remind_at <= now < remind_at + window:
+                fired.add(rid)
+                reminder(name, at)
+            if aid not in fired and at <= now < at + window:
+                fired.add(aid)
+                # play in a child so the loop keeps ticking
+                if os.fork() == 0:
+                    try:
+                        adhan(key, name)
+                    finally:
+                        os._exit(0)
+        fired = {f for f in fired if f[0] >= now.date() - dt.timedelta(days=1)}
+        try:
+            while os.waitpid(-1, os.WNOHANG)[0]:
+                pass
+        except ChildProcessError:
+            pass
+        time.sleep(10)
+
+
+def stop():
+    try:
+        pid = int(open(PIDFILE).read())
+    except Exception:
+        return
+    subprocess.run(["pkill", "-P", str(pid), "mpv"])
+
+
+def next_prayer():
+    data = load()
+    now = dt.datetime.now()
+    for day in (now.date(), now.date() + dt.timedelta(days=1)):
+        for key, name, at in times_for(data, day):
+            if at > now:
+                print(f"{name} {at:%H:%M}")
+                return
+
+
+if __name__ == "__main__":
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "next"
+    if cmd == "daemon":
+        signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+        daemon()
+    elif cmd == "fetch":
+        fetch()
+    elif cmd == "stop":
+        stop()
+    elif cmd == "test":
+        adhan(sys.argv[2] if len(sys.argv) > 2 else "dhuhr", "تجربة")
+    elif cmd == "next":
+        next_prayer()
+    else:
+        print(__doc__)

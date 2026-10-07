@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "blacknova.prayer-times",
+  "name": "Prayer Times",
+  "version": "1.0.0",
+  "author": "blacknova",
+  "description": "Prayer times for El Iman Moschee Hamburg (mawaqit)",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "barWidget": {
+    "displayName": "Prayer Times",
+    "description": "Next prayer with a full-day popup",
+    "category": "Info",
+    "allowMultiple": false,
+    "defaultSection": "center"
+  }
+}

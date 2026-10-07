@@ -1,0 +1,12 @@
+[Unit]
+Description=Prayer times reminders and adhan (El Iman Moschee Hamburg)
+After=graphical-session.target pipewire-pulse.service
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/prayer-times daemon
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=graphical-session.target
