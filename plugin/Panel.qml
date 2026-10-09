@@ -18,11 +18,13 @@ Panel {
   readonly property color fg: bar ? bar.foreground : Color.foreground
   readonly property string fontName: bar ? bar.fontFamily : Style.font.family
   readonly property var host: hostWidget
+  readonly property string lang: host ? host.lang : "en"
+  function t(k) { return Model.tr(root.lang, k) }
   readonly property date now: host ? host.now : new Date()
   // After isha the table rolls over to tomorrow, where the next adhan is.
   readonly property date tableDay: next ? next.time : now
   readonly property bool tomorrow: tableDay.getDate() !== now.getDate()
-  readonly property var today: host ? Model.dayTimes(host.mawaqit, tableDay) : []
+  readonly property var today: host ? Model.dayTimes(host.mawaqit, tableDay, lang) : []
   readonly property var next: host ? host.next : null
   readonly property var previous: host ? host.previous : null
   readonly property real progress: (next && previous)
@@ -58,7 +60,7 @@ Panel {
         id: column
         width: parent.width
         spacing: Style.space(14)
-        LayoutMirroring.enabled: true
+        LayoutMirroring.enabled: root.lang === "ar"
         LayoutMirroring.childrenInherit: true
 
         // ---- Hero: countdown to the next adhan.
@@ -68,7 +70,7 @@ Panel {
 
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: root.next ? "أذان " + root.next.name + " بعد" : "جارٍ تحميل المواقيت…"
+            text: root.next ? root.t("adhanIn").replace("%1", root.next.name) : root.t("loading")
             color: Qt.darker(root.fg, 1.4)
             font.family: root.fontName
             font.pixelSize: Style.font.body
@@ -76,7 +78,7 @@ Panel {
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
             visible: root.next !== null
-            text: root.next ? Model.countdown(root.next.time - root.now, true) : ""
+            text: root.next ? Model.countdown(root.next.time - root.now, true, root.lang) : ""
             color: root.host && root.host.soon ? Color.accent : root.fg
             font.family: root.fontName
             font.pixelSize: 44
@@ -96,7 +98,7 @@ Panel {
               radius: 2
               color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.12)
               Rectangle {
-                anchors.right: parent.right
+                anchors.left: parent.left
                 width: parent.width * root.progress
                 height: parent.height
                 radius: 2
@@ -123,8 +125,8 @@ Panel {
           Text {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
-            text: (root.tomorrow ? "غداً  ·  " : "") + Qt.locale("ar").toString(root.tableDay, "dddd d MMMM yyyy") + "  ·  "
-              + Model.hijri(root.tableDay, root.host && root.host.mawaqit ? root.host.mawaqit.hijriAdjustment : 0)
+            text: (root.tomorrow ? root.t("tomorrow") + "  ·  " : "") + Qt.locale(root.lang).toString(root.tableDay, "dddd d MMMM yyyy") + "  ·  "
+              + Model.hijri(root.tableDay, root.host && root.host.mawaqit ? root.host.mawaqit.hijriAdjustment : 0, root.lang)
             color: Qt.darker(root.fg, 1.4)
             font.family: root.fontName
             font.pixelSize: Style.font.bodySmall
@@ -146,14 +148,14 @@ Panel {
             id: headerName
             anchors.left: parent.left
             anchors.leftMargin: Style.space(16)
-            text: "الصلاة"
+            text: root.t("prayer")
             color: Qt.darker(root.fg, 1.6)
             font.family: root.fontName
             font.pixelSize: Style.font.caption
           }
           Text {
             x: parent.width * 0.48
-            text: "الأذان"
+            text: root.t("adhan")
             color: Qt.darker(root.fg, 1.6)
             font.family: root.fontName
             font.pixelSize: Style.font.caption
@@ -161,7 +163,7 @@ Panel {
           Text {
             anchors.right: parent.right
             anchors.rightMargin: Style.space(16)
-            text: "الإقامة"
+            text: root.t("iqama")
             color: Qt.darker(root.fg, 1.6)
             font.family: root.fontName
             font.pixelSize: Style.font.caption
@@ -228,41 +230,58 @@ Panel {
           opacity: 0.12
         }
 
-        // ---- Actions
-        Row {
-          anchors.horizontalCenter: parent.horizontalCenter
-          spacing: Style.space(10)
-
-          Repeater {
-            model: [
-              { label: "󰓛  إيقاف الأذان", args: ["stop"] },
-              { label: "󰐊  تجربة الأذان", args: ["test"] },
-              { label: "󰑐  تحديث", args: ["fetch"] }
+        // ---- Actions, then display settings
+        Repeater {
+          model: [
+            [
+              { label: "󰓛  " + root.t("stop"), args: ["stop"] },
+              { label: "󰐊  " + root.t("test"), args: ["test"] },
+              { label: "󰑐  " + root.t("refresh"), args: ["fetch"] }
+            ],
+            [
+              { label: "󰥔  " + root.t(root.host && root.host.showTime ? "showTime" : "showCountdown"),
+                set: { barMode: root.host && root.host.showTime ? "countdown" : "time" } },
+              { label: "󰗊  " + root.t("language"), set: { lang: root.lang === "ar" ? "en" : "ar" } }
             ]
+          ]
 
-            Rectangle {
-              required property var modelData
-              width: btnText.implicitWidth + Style.space(24)
-              height: Style.space(30)
-              radius: Style.cornerRadius
-              color: btnArea.containsMouse ? Style.hoverFillFor(root.fg, Color.accent) : "transparent"
-              border.width: 1
-              border.color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.2)
+          Row {
+            id: btnRow
+            required property var modelData
+            // buttons keep the same order in both languages
+            LayoutMirroring.enabled: false
+            LayoutMirroring.childrenInherit: true
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: Style.space(10)
 
-              Text {
-                id: btnText
-                anchors.centerIn: parent
-                text: modelData.label
-                color: btnArea.containsMouse ? Style.hoverStateColor(root.fg, Color.accent) : root.fg
-                font.family: root.fontName
-                font.pixelSize: Style.font.bodySmall
-              }
-              MouseArea {
-                id: btnArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: Quickshell.execDetached([root.host.cli].concat(modelData.args))
+            Repeater {
+              model: btnRow.modelData
+
+              Rectangle {
+                required property var modelData
+                width: btnText.implicitWidth + Style.space(24)
+                height: Style.space(30)
+                radius: Style.cornerRadius
+                color: btnArea.containsMouse ? Style.hoverFillFor(root.fg, Color.accent) : "transparent"
+                border.width: 1
+                border.color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.2)
+
+                Text {
+                  id: btnText
+                  anchors.centerIn: parent
+                  text: modelData.label
+                  color: btnArea.containsMouse ? Style.hoverStateColor(root.fg, Color.accent) : root.fg
+                  font.family: root.fontName
+                  font.pixelSize: Style.font.bodySmall
+                }
+                MouseArea {
+                  id: btnArea
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: modelData.set ? root.host.persistSettings(modelData.set)
+                    : Quickshell.execDetached([root.host.cli].concat(modelData.args))
+                }
               }
             }
           }

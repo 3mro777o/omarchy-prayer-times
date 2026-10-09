@@ -18,17 +18,32 @@ BarWidget {
   property var mawaqit: null
   property date now: new Date()
 
-  readonly property var next: Model.nextPrayer(mawaqit, now)
-  readonly property var previous: Model.previousPrayer(mawaqit, now)
+  // Persisted in this widget's shell.json entry; the panel toggles them.
+  readonly property string lang: settings && settings.lang === "ar" ? "ar" : "en"
+  readonly property bool showTime: settings && settings.barMode === "time"
+
+  readonly property var next: Model.nextPrayer(mawaqit, now, lang)
+  readonly property var previous: Model.previousPrayer(mawaqit, now, lang)
   readonly property real remainingMs: next ? next.time.getTime() - now.getTime() : 0
   readonly property bool soon: next !== null && remainingMs <= 20 * 60000
   readonly property string mosqueName: mawaqit && mawaqit.name ? mawaqit.name : ""
 
   readonly property string label: next
-    ? "󱠧\u2003\u2067" + next.name + "  " + (remainingMs <= 60 * 60000 ? "بعد " + Model.countdown(remainingMs, false) : Model.hm(next.time)) + "\u2069"
+    ? "󱠧 " + (lang === "ar" ? "\u2067" : "") + next.name + " "
+      + (showTime ? Model.hm(next.time) : Model.countdown(remainingMs, false, lang))
+      + (lang === "ar" ? "\u2069" : "")
     : (mawaqit ? "" : "󱠧")
 
   function run(args) { Quickshell.execDetached(args) }
+
+  function persistSettings(values) {
+    var entry = { id: root.moduleName }
+    for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+    for (var v in values) entry[v] = values[v]
+    root.settings = entry
+    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+      root.bar.shell.updateEntryInline(root.moduleName, entry)
+  }
 
   FileView {
     id: cache

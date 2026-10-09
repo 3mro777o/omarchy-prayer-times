@@ -2,13 +2,37 @@
 
 // calendar row: [fajr, shuruq, dhuhr, asr, maghrib, isha]
 var PRAYERS = [
-  { key: "fajr",    name: "الفجر",   idx: 0, iqama: 0, adhan: true },
-  { key: "shuruq",  name: "الشروق",  idx: 1, iqama: -1, adhan: false },
-  { key: "dhuhr",   name: "الظهر",   idx: 2, iqama: 1, adhan: true },
-  { key: "asr",     name: "العصر",   idx: 3, iqama: 2, adhan: true },
-  { key: "maghrib", name: "المغرب",  idx: 4, iqama: 3, adhan: true },
-  { key: "isha",    name: "العشاء",  idx: 5, iqama: 4, adhan: true }
+  { key: "fajr",    idx: 0, iqama: 0, adhan: true },
+  { key: "shuruq",  idx: 1, iqama: -1, adhan: false },
+  { key: "dhuhr",   idx: 2, iqama: 1, adhan: true },
+  { key: "asr",     idx: 3, iqama: 2, adhan: true },
+  { key: "maghrib", idx: 4, iqama: 3, adhan: true },
+  { key: "isha",    idx: 5, iqama: 4, adhan: true }
 ]
+
+// UI strings per language; settings.lang picks one, English by default.
+var STR = {
+  en: {
+    fajr: "Fajr", shuruq: "Sunrise", dhuhr: "Dhuhr", asr: "Asr", maghrib: "Maghrib", isha: "Isha", jumua: "Jumu'ah",
+    adhanIn: "%1 adhan in", loading: "Loading prayer times…", tomorrow: "Tomorrow",
+    prayer: "Prayer", adhan: "Adhan", iqama: "Iqama", h: "h", m: "m",
+    stop: "Stop adhan", test: "Test adhan", refresh: "Refresh",
+    showCountdown: "Bar: time left", showTime: "Bar: adhan time", language: "العربية",
+    months: ["Muharram", "Safar", "Rabi' al-Awwal", "Rabi' al-Thani", "Jumada al-Ula", "Jumada al-Akhirah",
+             "Rajab", "Sha'ban", "Ramadan", "Shawwal", "Dhu al-Qi'dah", "Dhu al-Hijjah"], ah: "AH"
+  },
+  ar: {
+    fajr: "الفجر", shuruq: "الشروق", dhuhr: "الظهر", asr: "العصر", maghrib: "المغرب", isha: "العشاء", jumua: "الجمعة",
+    adhanIn: "أذان %1 بعد", loading: "جارٍ تحميل المواقيت…", tomorrow: "غداً",
+    prayer: "الصلاة", adhan: "الأذان", iqama: "الإقامة", h: "س", m: "د",
+    stop: "إيقاف الأذان", test: "تجربة الأذان", refresh: "تحديث",
+    showCountdown: "الشريط: المتبقي", showTime: "الشريط: ساعة الأذان", language: "English",
+    months: ["محرم", "صفر", "ربيع الأول", "ربيع الآخر", "جمادى الأولى", "جمادى الآخرة",
+             "رجب", "شعبان", "رمضان", "شوال", "ذو القعدة", "ذو الحجة"], ah: "هـ"
+  }
+}
+
+function tr(lang, k) { return (STR[lang] || STR.en)[k] }
 
 function parse(text) {
   try { return JSON.parse(text) } catch (e) { return null }
@@ -23,7 +47,7 @@ function at(day, hhmm) {
 function pad(n) { return (n < 10 ? "0" : "") + n }
 function hm(d) { return d ? pad(d.getHours()) + ":" + pad(d.getMinutes()) : "--:--" }
 
-function dayTimes(data, day) {
+function dayTimes(data, day, lang) {
   if (!data || !data.calendar) return []
   var month = data.calendar[day.getMonth()]
   var row = month ? month[String(day.getDate())] : null
@@ -41,9 +65,9 @@ function dayTimes(data, day) {
       if (v.charAt(0) === "+") iqama = new Date(t.getTime() + parseInt(v.slice(1), 10) * 60000)
       else iqama = at(day, v)
     }
-    var name = p.name
+    var name = tr(lang, p.key)
     if (friday && p.key === "dhuhr" && data.jumua) {
-      name = "الجمعة"
+      name = tr(lang, "jumua")
       iqama = at(day, data.jumua)
     }
     out.push({ key: p.key, name: name, time: t, iqama: iqama, adhan: p.adhan })
@@ -52,38 +76,35 @@ function dayTimes(data, day) {
 }
 
 // Next adhan (shuruq excluded) after `now`, rolling into tomorrow after isha.
-function nextPrayer(data, now) {
+function nextPrayer(data, now, lang) {
   for (var d = 0; d < 2; d++) {
     var day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d)
-    var list = dayTimes(data, day)
+    var list = dayTimes(data, day, lang)
     for (var i = 0; i < list.length; i++)
       if (list[i].adhan && list[i].time > now) return list[i]
   }
   return null
 }
 
-function previousPrayer(data, now) {
+function previousPrayer(data, now, lang) {
   for (var d = 0; d < 2; d++) {
     var day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d)
-    var list = dayTimes(data, day)
+    var list = dayTimes(data, day, lang)
     for (var i = list.length - 1; i >= 0; i--)
       if (list[i].adhan && list[i].time <= now) return list[i]
   }
   return null
 }
 
-function countdown(ms, withSeconds) {
+function countdown(ms, withSeconds, lang) {
   if (ms < 0) ms = 0
   var s = Math.floor(ms / 1000)
   var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60
-  return withSeconds ? pad(h) + ":" + pad(m) + ":" + pad(sec) : (h > 0 ? h + "س " + m + "د" : m + "د")
+  return withSeconds ? pad(h) + ":" + pad(m) + ":" + pad(sec) : (h > 0 ? h + tr(lang, "h") + " " + m + tr(lang, "m") : m + tr(lang, "m"))
 }
 
 // Tabular (Kuwaiti) Islamic calendar; mawaqit's hijriAdjustment shifts it.
-var HIJRI_MONTHS = ["محرم", "صفر", "ربيع الأول", "ربيع الآخر", "جمادى الأولى", "جمادى الآخرة",
-                    "رجب", "شعبان", "رمضان", "شوال", "ذو القعدة", "ذو الحجة"]
-
-function hijri(date, adjust) {
+function hijri(date, adjust, lang) {
   var d = new Date(date.getFullYear(), date.getMonth(), date.getDate() + (adjust || 0))
   var y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate()
   if (m < 3) { y -= 1; m += 12 }
@@ -97,5 +118,5 @@ function hijri(date, adjust) {
   var hm_ = Math.floor((24 * l) / 709)
   var hd = l - Math.floor((709 * hm_) / 24)
   var hy = 30 * n + j - 30
-  return hd + " " + HIJRI_MONTHS[hm_ - 1] + " " + hy + " هـ"
+  return hd + " " + tr(lang, "months")[hm_ - 1] + " " + hy + " " + tr(lang, "ah")
 }

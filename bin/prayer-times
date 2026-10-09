@@ -26,10 +26,44 @@ STATE_DIR = os.path.join(HOME, ".local/state/prayer-times")
 CACHE = os.path.join(STATE_DIR, "mawaqit.json")
 PIDFILE = os.path.join(STATE_DIR, "adhan.pid")
 SOUNDS = os.path.join(HOME, ".local/share/prayer-times/sounds")
+SHELL_JSON = os.path.join(HOME, ".config/omarchy/shell.json")
+PLUGIN_ID = "blacknova.prayer-times"
 
 # calendar row: [fajr, shuruq, dhuhr, asr, maghrib, isha]
-PRAYERS = [("fajr", "الفجر", 0), ("dhuhr", "الظهر", 2), ("asr", "العصر", 3),
-           ("maghrib", "المغرب", 4), ("isha", "العشاء", 5)]
+PRAYERS = [("fajr", 0), ("dhuhr", 2), ("asr", 3), ("maghrib", 4), ("isha", 5)]
+
+STR = {
+    "en": {"fajr": "Fajr", "dhuhr": "Dhuhr", "asr": "Asr", "maghrib": "Maghrib", "isha": "Isha",
+           "app": "Prayer Times", "now": "It's time for {} adhan", "falah": "Come to prayer",
+           "remind": "{} adhan in {} minutes", "at": "Adhan at {}", "test": "Test"},
+    "ar": {"fajr": "الفجر", "dhuhr": "الظهر", "asr": "العصر", "maghrib": "المغرب", "isha": "العشاء",
+           "app": "مواقيت الصلاة", "now": "حان الآن موعد أذان {}", "falah": "حي على الصلاة",
+           "remind": "أذان {} بعد {} دقيقة", "at": "موعد الأذان الساعة {}", "test": "تجربة"},
+}
+
+
+def lang():
+    """The widget's language setting from its shell.json bar entry (default English)."""
+    def find(node):
+        if isinstance(node, dict):
+            if node.get("id") == PLUGIN_ID and "lang" in node:
+                return node["lang"]
+            node = list(node.values())
+        if isinstance(node, list):
+            for v in node:
+                r = find(v)
+                if r:
+                    return r
+        return None
+    try:
+        with open(SHELL_JSON) as f:
+            return "ar" if find(json.load(f)) == "ar" else "en"
+    except Exception:
+        return "en"
+
+
+def t(key):
+    return STR[lang()][key]
 
 
 def log(*a):
@@ -64,9 +98,9 @@ def load():
 def times_for(data, day):
     row = data["calendar"][day.month - 1][str(day.day)]
     out = []
-    for key, name, idx in PRAYERS:
+    for key, idx in PRAYERS:
         h, m = map(int, row[idx].split(":"))
-        out.append((key, name, dt.datetime.combine(day, dt.time(h, m))))
+        out.append((key, dt.datetime.combine(day, dt.time(h, m))))
     return out
 
 
@@ -103,12 +137,12 @@ def play(path, wait=False):
 
 
 def notify(title, body, urgency="normal"):
-    subprocess.run(["notify-send", "-a", "مواقيت الصلاة", "-u", urgency, "-i",
+    subprocess.run(["notify-send", "-a", t("app"), "-u", urgency, "-i",
                     "preferences-system-time", title, body])
 
 
-def adhan(key, name):
-    notify(f"حان الآن موعد أذان {name}", "حي على الصلاة", "critical")
+def adhan(key, test=False):
+    notify(t("now").format(t(key)), t("test") if test else t("falah"), "critical")
     sound = os.path.join(SOUNDS, "adhan-afassy-fajr.mp3" if key == "fajr" else "adhan-afassy.mp3")
     with open(PIDFILE, "w") as f:
         f.write(str(os.getpid()))
@@ -121,8 +155,8 @@ def adhan(key, name):
             pass
 
 
-def reminder(name, at):
-    notify(f"أذان {name} بعد {REMIND_MINUTES} دقيقة", f"موعد الأذان الساعة {at:%H:%M}")
+def reminder(key, at):
+    notify(t("remind").format(t(key), REMIND_MINUTES), t("at").format(f"{at:%H:%M}"))
     play(os.path.join(SOUNDS, "bip.mp3"))
 
 
@@ -151,19 +185,19 @@ def daemon():
             data = load()
             continue
 
-        for key, name, at in times_for(data, now.date()):
+        for key, at in times_for(data, now.date()):
             remind_at = at - dt.timedelta(minutes=REMIND_MINUTES)
             rid = (at.date(), key, "remind")
             aid = (at.date(), key, "adhan")
             if rid not in fired and remind_at <= now < remind_at + window:
                 fired.add(rid)
-                reminder(name, at)
+                reminder(key, at)
             if aid not in fired and at <= now < at + window:
                 fired.add(aid)
                 # play in a child so the loop keeps ticking
                 if os.fork() == 0:
                     try:
-                        adhan(key, name)
+                        adhan(key)
                     finally:
                         os._exit(0)
         fired = {f for f in fired if f[0] >= now.date() - dt.timedelta(days=1)}
@@ -187,9 +221,9 @@ def next_prayer():
     data = load()
     now = dt.datetime.now()
     for day in (now.date(), now.date() + dt.timedelta(days=1)):
-        for key, name, at in times_for(data, day):
+        for key, at in times_for(data, day):
             if at > now:
-                print(f"{name} {at:%H:%M}")
+                print(f"{t(key)} {at:%H:%M}")
                 return
 
 
@@ -203,7 +237,7 @@ if __name__ == "__main__":
     elif cmd == "stop":
         stop()
     elif cmd == "test":
-        adhan(sys.argv[2] if len(sys.argv) > 2 else "dhuhr", "تجربة")
+        adhan(sys.argv[2] if len(sys.argv) > 2 else "dhuhr", test=True)
     elif cmd == "next":
         next_prayer()
     else:
