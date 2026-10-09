@@ -1,51 +1,59 @@
 # Omarchy Prayer Times
 
-ويدجت لمواقيت الصلاة في شريط [Omarchy](https://omarchy.org/)، تأخذ المواقيت من [Mawaqit](https://mawaqit.net)، وخدمة بالخلفية للتنبيه والأذان.
+**English** | [العربية](README.ar.md)
 
-A prayer-times widget for the Omarchy shell bar, with times from a Mawaqit mosque page, and a background service for reminders and the adhan.
+A prayer-times widget for the [Omarchy](https://omarchy.org/) shell bar. Times come from a [Mawaqit](https://mawaqit.net) mosque page, and a background service handles reminders and the adhan.
 
-## المميزات
-- الصلاة القادمة في الشريط مع الوقت المتبقي للأذان، أو ساعة الأذان (تختارها من النافذة).
-- الواجهة والإشعارات بالإنجليزي أو العربي (زر في النافذة، الافتراضي إنجليزي).
-- نافذة فيها عدّ تنازلي، والتاريخ الميلادي والهجري، والصلوات الست مع الإقامة، ووقت الجمعة.
-- إشعار وصوت قبل الأذان بـ 20 دقيقة.
-- أذان كامل عند دخول الوقت، وأذان خاص للفجر.
-- الأذان يشتغل على سماعة تختارها، وإذا كانت مفصولة يشتغل على السماعة الافتراضية.
-- المواقيت محفوظة على الجهاز، فيكمل بدون إنترنت.
+## Features
+- The next prayer in the bar, with either the time left until the adhan or the adhan time (toggle it in the popup).
+- UI and notifications in English or Arabic (toggle in the popup, English by default).
+- A popup with a countdown, Gregorian and Hijri dates, all six times with iqama, and the Jumu'ah time.
+- A notification and alert sound 20 minutes before each adhan.
+- The full adhan at prayer time, with a separate adhan for Fajr.
+- The adhan plays on a speaker of your choice, falling back to the default output if it is unplugged.
+- Times are cached locally, so it keeps working offline.
 
-## التثبيت
+## Installation
 ```bash
 git clone https://github.com/3mro777o/omarchy-prayer-times.git
 cd omarchy-prayer-times
 ./install.sh
 ```
 
-## الإعدادات
-في أول ملف `bin/prayer-times`:
+The installer:
+- copies `prayer-times` to `~/.local/bin` and the widget to `~/.config/omarchy/plugins/blacknova.prayer-times`,
+- downloads the adhan and alert sounds from mawaqit.net (they are not stored in this repo),
+- installs `mpv` if it is missing,
+- enables the `prayer-times` systemd user service and the bar widget.
 
-| المتغير | المعنى |
+## Configuration
+At the top of `bin/prayer-times` (or `~/.local/bin/prayer-times` after installing):
+
+| Variable | Meaning |
 |---|---|
-| `MOSQUE_URL` | رابط صفحة المسجد على mawaqit.net |
-| `PREFERRED_SINK` | جزء من اسم السماعة في `pactl list sinks short` |
-| `REMIND_MINUTES` | كم دقيقة قبل الأذان يجي التنبيه |
+| `MOSQUE_URL` | Your mosque's page on mawaqit.net (defaults to El Iman Moschee Hamburg) |
+| `PREFERRED_SINK` | Part of your speaker's name as shown by `pactl list sinks short` |
+| `REMIND_MINUTES` | How many minutes before the adhan the reminder fires |
 
-بعد أي تعديل: `systemctl --user restart prayer-times`
-
-## الاستخدام
-| | |
-|---|---|
-| كبسة يسار على الويدجت | فتح نافذة المواقيت |
-| كبسة يمين | إيقاف الأذان |
-| كبسة وسط | تحديث المواقيت |
-
+After any change:
 ```bash
-prayer-times next    # الصلاة القادمة
-prayer-times test    # تجربة الأذان
-prayer-times stop    # إيقاف الأذان
-prayer-times fetch   # تحديث المواقيت
+prayer-times fetch
+systemctl --user restart prayer-times
 ```
 
-## المتطلبات
-Omarchy (Quickshell shell)، و Python 3، و `mpv`، و `pactl`، و `notify-send`.
+## Usage
+| Action | Result |
+|---|---|
+| Left click on the widget | Open the prayer-times popup |
+| Right click | Stop the adhan |
+| Middle click | Refresh the times |
 
-ملفات الصوت لا تُرفع مع المشروع. `install.sh` يحمّلها من mawaqit.net.
+```bash
+prayer-times next        # print the next prayer
+prayer-times test [fajr] # play the adhan now (Fajr adhan if "fajr" is given)
+prayer-times stop        # stop the adhan
+prayer-times fetch       # refresh the times from mawaqit.net
+```
+
+## Requirements
+Omarchy (Quickshell shell), Python 3, `mpv`, `pactl`, `notify-send`, `curl`.
