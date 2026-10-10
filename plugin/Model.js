@@ -14,7 +14,7 @@ var PRAYERS = [
 var STR = {
   en: {
     fajr: "Fajr", shuruq: "Sunrise", dhuhr: "Dhuhr", asr: "Asr", maghrib: "Maghrib", isha: "Isha", jumua: "Jumu'ah",
-    adhanIn: "%1 adhan in", loading: "Loading prayer times…", tomorrow: "Tomorrow",
+    adhanIn: "%1 adhan in", sunriseIn: "Sunrise in", loading: "Loading prayer times…", tomorrow: "Tomorrow",
     prayer: "Prayer", adhan: "Adhan", iqama: "Iqama", h: "h", m: "m",
     stop: "Stop adhan", test: "Test adhan", refresh: "Refresh",
     showCountdown: "Bar: time left", showTime: "Bar: adhan time", language: "العربية",
@@ -23,7 +23,7 @@ var STR = {
   },
   ar: {
     fajr: "الفجر", shuruq: "الشروق", dhuhr: "الظهر", asr: "العصر", maghrib: "المغرب", isha: "العشاء", jumua: "الجمعة",
-    adhanIn: "أذان %1 بعد", loading: "جارٍ تحميل المواقيت…", tomorrow: "غداً",
+    adhanIn: "أذان %1 بعد", sunriseIn: "الشروق بعد", loading: "جارٍ تحميل المواقيت…", tomorrow: "غداً",
     prayer: "الصلاة", adhan: "الأذان", iqama: "الإقامة", h: "س", m: "د",
     stop: "إيقاف الأذان", test: "تجربة الأذان", refresh: "تحديث",
     showCountdown: "الشريط: المتبقي", showTime: "الشريط: ساعة الأذان", language: "English",
@@ -75,13 +75,13 @@ function dayTimes(data, day, lang) {
   return out
 }
 
-// Next adhan (shuruq excluded) after `now`, rolling into tomorrow after isha.
+// Next prayer time (sunrise included) after `now`, rolling into tomorrow after isha.
 function nextPrayer(data, now, lang) {
   for (var d = 0; d < 2; d++) {
     var day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d)
     var list = dayTimes(data, day, lang)
     for (var i = 0; i < list.length; i++)
-      if (list[i].adhan && list[i].time > now) return list[i]
+      if (list[i].time > now) return list[i]
   }
   return null
 }
@@ -91,7 +91,7 @@ function previousPrayer(data, now, lang) {
     var day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d)
     var list = dayTimes(data, day, lang)
     for (var i = list.length - 1; i >= 0; i--)
-      if (list[i].adhan && list[i].time <= now) return list[i]
+      if (list[i].time <= now) return list[i]
   }
   return null
 }

@@ -70,7 +70,9 @@ Panel {
 
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: root.next ? root.t("adhanIn").replace("%1", root.next.name) : root.t("loading")
+            text: !root.next ? root.t("loading")
+              : root.next.key === "shuruq" ? root.t("sunriseIn")
+              : root.t("adhanIn").replace("%1", root.next.name)
             color: Qt.darker(root.fg, 1.4)
             font.family: root.fontName
             font.pixelSize: Style.font.body

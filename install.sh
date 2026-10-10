@@ -23,6 +23,6 @@ command -v mpv >/dev/null || omarchy pkg add mpv
 systemctl --user daemon-reload
 systemctl --user enable --now prayer-times.service
 
-omarchy-shell shell rescanPlugins >/dev/null || true
+omarchy-restart-shell >/dev/null || true
 omarchy plugin enable "$PLUGIN_ID" || true
 echo "Done. Next prayer: $("$HOME/.local/bin/prayer-times" next)"
